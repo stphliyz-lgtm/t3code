@@ -71,6 +71,7 @@ export function useComposerMenuItems({
   activeThreadId,
   pullRequestProjectId,
   pullRequestRepository,
+  pullRequestTrackedFolders,
   threadPullRequests,
   sideChatAvailable,
   sideChatDisabledReason,
@@ -91,6 +92,8 @@ export function useComposerMenuItems({
   readonly activeThreadId: ThreadId | null;
   readonly pullRequestProjectId: ProjectId | null;
   readonly pullRequestRepository: string | null;
+  /** The project's own folder has no repository, but its tracked folders may. */
+  readonly pullRequestTrackedFolders: boolean;
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly sideChatAvailable: boolean;
   readonly sideChatDisabledReason: string | null;
@@ -150,8 +153,14 @@ export function useComposerMenuItems({
     messages,
   );
 
+  const pullRequestsAvailable =
+    pullRequestProjectId !== null && (pullRequestRepository !== null || pullRequestTrackedFolders);
+  const inPullRequestRepository = (repository: string) =>
+    pullRequestRepository === null ||
+    repository.trim().toLowerCase() === pullRequestRepository.trim().toLowerCase();
   const pullRequestListTargets =
     composerTriggerKind !== "pull-request" ||
+    !pullRequestsAvailable ||
     pullRequestProjectId === null ||
     (pullRequestTextQuery !== null && settledPullRequestTextQuery === null)
       ? EMPTY_PULL_REQUEST_LIST_TARGETS
@@ -184,7 +193,7 @@ export function useComposerMenuItems({
     pullRequestLookup.data?.entries.some(
       (entry) =>
         entry.projectId === pullRequestProjectId &&
-        entry.repository.trim().toLowerCase() === pullRequestRepository?.trim().toLowerCase() &&
+        inPullRequestRepository(entry.repository) &&
         entry.number === settledPullRequestNumber,
     ) === true;
   const exactPullRequestLookup = useEnvironmentQuery(
@@ -347,7 +356,7 @@ export function useComposerMenuItems({
     if (
       composerTrigger.kind === "pull-request" &&
       pullRequestProjectId !== null &&
-      pullRequestRepository !== null
+      pullRequestsAvailable
     ) {
       const exactPullRequest =
         exactPullRequestLookup.data?.number === pullRequestTriggerNumber
@@ -375,8 +384,7 @@ export function useComposerMenuItems({
               (pullRequestLookup.data?.entries ?? []).filter((entry) => {
                 if (
                   entry.projectId !== pullRequestProjectId ||
-                  entry.repository.trim().toLowerCase() !==
-                    pullRequestRepository.trim().toLowerCase()
+                  !inPullRequestRepository(entry.repository)
                 ) {
                   return false;
                 }
@@ -408,7 +416,7 @@ export function useComposerMenuItems({
         },
         label: `#${pullRequest.number}`,
         description:
-          pullRequest.repository.trim().toLowerCase() === pullRequestRepository.trim().toLowerCase()
+          pullRequestRepository !== null && inPullRequestRepository(pullRequest.repository)
             ? pullRequest.title
             : `${pullRequest.repository} · ${pullRequest.title}`,
       }));
@@ -420,8 +428,7 @@ export function useComposerMenuItems({
     ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
       workspaceSkillsScanning) ||
     (composerTriggerKind === "pull-request" &&
-      pullRequestProjectId !== null &&
-      pullRequestRepository !== null &&
+      pullRequestsAvailable &&
       (pullRequestLookup.isPending ||
         pullRequestTextQuery !== debouncedPullRequestTextQuery ||
         pullRequestTriggerNumber !== debouncedPullRequestNumber ||
@@ -431,7 +438,7 @@ export function useComposerMenuItems({
       return gt("No skills found. Try / to browse provider commands.");
     }
     if (composerTriggerKind === "pull-request") {
-      if (pullRequestProjectId === null || pullRequestRepository === null) {
+      if (!pullRequestsAvailable) {
         return gt("Pull requests are not available for this project.");
       }
       if (

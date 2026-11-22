@@ -3879,6 +3879,9 @@ export default function ChatView(props: ChatViewProps) {
                                 pullRequestRepository={
                                   supportsPullRequests ? activeProjectRepository : null
                                 }
+                                pullRequestTrackedFolders={
+                                  (activeProject?.trackedFolders?.length ?? 0) > 0
+                                }
                                 threadPullRequests={
                                   (activeThreadShell ?? activeThread)?.pullRequests
                                 }

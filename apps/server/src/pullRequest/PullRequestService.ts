@@ -967,6 +967,33 @@ export const make = Effect.gen(function* () {
         ),
       ),
       Effect.flatMap((projects) =>
+        Effect.forEach(
+          projects,
+          (project) =>
+            // A project in a plain folder has no repository of its own; when one project is asked
+            // for, read the repositories in its tracked folders instead.
+            filter.projectId === undefined ||
+            project.repositoryIdentity != null ||
+            !project.trackedFolders?.length
+              ? Effect.succeed([project])
+              : Effect.forEach(
+                  project.trackedFolders,
+                  (folder) =>
+                    repositoryIdentities
+                      .resolve(folder.path)
+                      .pipe(
+                        Effect.map((repositoryIdentity) =>
+                          repositoryIdentity === null
+                            ? []
+                            : [{ ...project, workspaceRoot: folder.path, repositoryIdentity }],
+                        ),
+                      ),
+                  { concurrency: REPOSITORY_CONCURRENCY },
+                ).pipe(Effect.map((found) => found.flat())),
+          { concurrency: REPOSITORY_CONCURRENCY },
+        ).pipe(Effect.map((expanded) => expanded.flat())),
+      ),
+      Effect.flatMap((projects) =>
         resolveRemoteHosts(projects, filter).pipe(
           Effect.map((remoteHosts) => ({ remoteHosts, projects })),
         ),
@@ -1045,9 +1072,15 @@ export const make = Effect.gen(function* () {
   const requireProject = (ref: PullRequestRef): Effect.Effect<SupportedProject, PullRequestError> =>
     listWorkspaceProjects({ projectId: ref.projectId }).pipe(
       Effect.flatMap(({ supported }): Effect.Effect<SupportedProject, PullRequestError> => {
-        const own = supported[0];
         const repository = ref.repository.trim();
         const host = ref.host?.trim().toLowerCase();
+        // A project of tracked folders has several repositories.
+        const own =
+          supported.find(
+            (candidate) =>
+              candidate.repository.toLowerCase() === repository.toLowerCase() &&
+              (host === undefined || host === candidate.host),
+          ) ?? supported[0];
         if (own !== undefined && own.repository.toLowerCase() === repository.toLowerCase()) {
           if (host === undefined || host === own.host) return Effect.succeed(own);
         }

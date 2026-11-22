@@ -395,6 +395,28 @@ describe("filterComposerPullRequestMatches", () => {
     ).toEqual([7, 8987, 27]);
   });
 
+  it("matches every repository of the project when it has no repository of its own", () => {
+    expect(
+      filterComposerPullRequestMatches({
+        keyOf: threadPullRequestKeyOf,
+        entries: [
+          ...entries,
+          {
+            host: "github.com",
+            number: 71,
+            projectId: "project-1",
+            repository: "t3tools/docs",
+            updatedAt: "2026-09-05T12:00:00.000Z",
+          },
+        ],
+        projectId: "project-1",
+        repository: null,
+        query: "7",
+        limit: 10,
+      }).map((entry) => `${entry.repository}#${entry.number}`),
+    ).toEqual(["t3tools/t3code#7", "t3tools/docs#71", "T3Tools/T3Code#8987", "t3tools/t3code#27"]);
+  });
+
   it("keeps an older exact match when newer substring matches would fill the limit", () => {
     const exact = {
       host: "github.com",

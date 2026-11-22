@@ -1110,6 +1110,65 @@ it.effect("reads a repository once when several worktrees share it", () =>
   }),
 );
 
+it.effect("reads the tracked folders' repositories for a project in a plain folder", () =>
+  Effect.gen(function* () {
+    const checkouts = new Map(
+      [
+        ["/work/web", "acme/web"],
+        ["/work/api", "acme/api"],
+      ].map(([workspaceRoot, repository]) => [
+        workspaceRoot,
+        project({ id: "p1", title: "Work", workspaceRoot: workspaceRoot!, repository: repository! })
+          .repositoryIdentity,
+      ]),
+    );
+    const read: string[] = [];
+    const service = yield* makeService({
+      projects: [
+        {
+          ...project({ id: "p1", title: "Work", workspaceRoot: "/work" }),
+          trackedFolders: [
+            { path: "/work/web", name: "web", discovered: true },
+            { path: "/work/api", name: "api", discovered: true },
+            { path: "/work/notes", name: "notes" },
+          ],
+        },
+      ],
+      providers: [
+        fakePullRequestProvider(SourceControlProviderKind.make("github"), {
+          listChangeRequests: ({ cwd, repository }) => {
+            read.push(`${cwd} ${repository}`);
+            return Effect.succeed({
+              items: [changeRequest(repository === "acme/web" ? 1 : 2, "2026-07-02T00:00:00Z")],
+              truncated: false,
+              continues: false,
+            });
+          },
+          getChangeRequest: ({ cwd, repository }) => {
+            read.push(`${cwd} ${repository}`);
+            return Effect.succeed(hostedChangeRequest("Body"));
+          },
+        }),
+      ],
+      resolveRepositoryIdentity: (cwd) => Effect.succeed(checkouts.get(cwd) ?? null),
+    });
+
+    const result = yield* service.list({ state: "open", projectId: "p1" as ProjectId });
+
+    assert.deepStrictEqual(
+      result.entries
+        .map((entry) => `${entry.projectId} ${entry.repository}#${entry.number}`)
+        .sort(),
+      ["p1 acme/api#2", "p1 acme/web#1"],
+    );
+    assert.deepStrictEqual(read.sort(), ["/work/api acme/api", "/work/web acme/web"]);
+
+    read.length = 0;
+    yield* service.detail({ projectId: "p1" as ProjectId, repository: "acme/api", number: 1 });
+    assert.deepStrictEqual(read, ["/work/api acme/api"]);
+  }),
+);
+
 it.effect("keeps healthy repositories when one of them cannot be read", () =>
   Effect.gen(function* () {
     const service = yield* makeService({

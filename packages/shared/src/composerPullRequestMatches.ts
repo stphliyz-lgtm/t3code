@@ -39,19 +39,20 @@ export function filterComposerPullRequestMatches<
   readonly entries: ReadonlyArray<Entry>;
   readonly linked?: ReadonlyArray<Linked>;
   readonly projectId: string;
-  readonly repository: string;
+  /** Null accepts every repository of the project, for one made of tracked folders. */
+  readonly repository: string | null;
   readonly query: string;
   readonly limit: number;
   readonly keyOf: (entry: Entry | Linked) => string;
 }): ReadonlyArray<Entry | Linked> {
-  const repository = input.repository.trim().toLowerCase();
+  const repository = input.repository?.trim().toLowerCase() ?? null;
   const { keyOf } = input;
   const linked = (input.linked ?? []).filter((entry) => String(entry.number).includes(input.query));
   const linkedKeys = new Set(linked.map(keyOf));
   const matchingEntries = input.entries.filter(
     (entry) =>
       entry.projectId === input.projectId &&
-      entry.repository.trim().toLowerCase() === repository &&
+      (repository === null || entry.repository.trim().toLowerCase() === repository) &&
       String(entry.number).includes(input.query),
   );
   const uniqueEntries = new Map<string, Entry | Linked>();
